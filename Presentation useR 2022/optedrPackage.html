@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>optedr: An optimal experimental design package</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Carlos de la Calle-Arroyo" />
+    <link href="libs/remark-css-0.0.1/useR.css" rel="stylesheet" />
+    <link href="libs/remark-css-0.0.1/useR-fonts.css" rel="stylesheet" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+.title[
+# <code>optedr</code>: An optimal experimental design package
+]
+.author[
+### Carlos de la Calle-Arroyo
+]
+
+---
+
+
+class: chapter-slide
+
+# Outline
+
+
+
+---
+
+## Outline
+
+- Optimal design calculation
+- Evaluating designs: `optdes` class
+- D-augmentation
+- Efficient rounding
+- Shiny demos
+- Summary and future improvements
+
+---
+
+class: chapter-slide
+
+# Optimal Design Calculation
+
+
+
+---
+
+## Regression model
+
+$$y(x)=\eta(x;\theta)+\varepsilon\quad, $$
+
+with `\(\theta\)` the unknown parameters of the model, of interest for the experimenter.
+
+---
+
+## Exact design
+
+A collection of points (with replicates) to take measures
+
+
+## Aproximate design
+
+A design, `\(\xi\)`, as a probability measure (discrete approximate design) which have nice theoretical and practical properties.
+
+---
+
+## FIM
+
+$$
+M(\xi,\theta)=\sum_{x\in\mathcal{X}}f(x)f^t(x)\xi(x),
+$$
+
+with `\(f(x)=\partial\eta(x, \theta)/\partial\theta\)`
+
+
+## Optimality criteria
+
+- D-optimality:  `\(\Phi_D=|M(\xi)^{-1/k}|\)`
+- `\(D_s\)`-optimality: `\(\Phi_{D_S}=\left \{\frac{|M(\xi)|}{|M_{22}(\xi)|}\right\}^{-1/s}\)`
+- A-optimality: `\(\Phi_A=\text{Tr} (M^{-1})\)`
+- I-optimality: `\(\Phi_I=\text{Tr} (AM^{-1})\)`, with `\(A=\int_{\mathcal{R}}\mu(x)f(x)f(x)^Tdx\)`.
+
+---
+
+## General Equivalence Theorem
+
+A design `\(\xi^\star\)` is `\(\phi\)`-optimal if and only if,
+
+`$$Tr \left\{\nabla \phi(\xi^\star)[M(\xi^\star, \theta)-f(T)f^t(T)]\right\}\leq 0,  T\in\mathcal{X}$$`
+
+The equality holds on the support points of the design, and for the interior points is a local maxima.
+
+
+## Efficiency 
+
+The efficiency of a design `\(\xi_1\)`, for a certain criterion, with respect to another design `\(\xi_2\)` can be defined as
+
+$$
+eff_\Phi = \frac{\Phi(\xi_1)}{\Phi(\xi_2)}
+$$
+
+
+
+---
+
+
+## Cocktail algorithm
+
+1. Start With a non-singular design
+2. Add `\(x\)` such that `\(\max_{x\in\chi} f^t(x)\nabla \phi(\xi)f(x)\)` 
+3. Optimise weights via multiplicative algorithm
+4. Apply heuristic
+5. Check optimality, if the threshold is not met repeat 2-5
+
+
+---
+
+## Multiplicative algorithm
+
+1. Start with a non-singular design
+2. Update `\(\xi(x_i)^{r+1} \gets \xi(x_i)^{r} \left(\frac{ f^t(x)\nabla \phi(\xi^r)f(x)}{Tr M^r(\xi^r, \theta)\nabla\phi(\xi^r)}\right)^\delta\)`
+3. If `\(\max_i(|\xi(T_i)^{r+1}-\xi(T_i)^r|)\leq \epsilon\)` stop, else repeat 2-3
+
+
+---
+
+
+## Calculate optimal design
+
+
+```r
+resArr.D &lt;- opt_des("D-Optimality",
+  model = y ~ a*exp(-b/x),
+  parameters = c("a", "b"),
+  par_values = c(1, 1500),
+  design_space = c(212, 422))
+```
+
+```
+## i Stop condition not reached, max iterations performed
+```
+
+```
+## i The lower bound for efficiency is 99.9986396401789%
+```
+
+```r
+resArr.D$optdes
+```
+
+```
+##      Point    Weight
+## 1 329.2966 0.5000068
+## 2 422.0000 0.4999932
+```
+
+---
+
+## Sensitivity function
+
+
+
+```r
+resArr.D$sens
+```
+
+&lt;img src="optedrPackage_files/figure-html/unnamed-chunk-3-1.png" title="Sensibility function of the design" alt="Sensibility function of the design" width="48%" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+## Algorithm convergence and criterion value
+
+
+
+```r
+resArr.D$convergence
+```
+
+&lt;img src="optedrPackage_files/figure-html/unnamed-chunk-4-1.png" title="Convergence of the cocktail algorithm" alt="Convergence of the cocktail algorithm" width="48%" style="display: block; margin: auto;" /&gt;
+
+
+
+```r
+resArr.D$crit_value
+```
+
+```
+## [1] 9972806
+```
+
+
+
+---
+
+## Other optimality criteria
+
+
+```r
+resMM.A&lt;-opt_des("A-Optimality",
+  y ~ V*x/(K+x),
+  c("V", "K"),
+  c(1, 1.70),
+  c(0.34, 8.5))
+```
+
+```
+## i Stop condition reached: difference between sensitivity and criterion &lt; 1e-05
+```
+
+```
+## i The lower bound for efficiency is 100%
+```
+
+```r
+resMM.A$optdes
+```
+
+```
+##       Point   Weight
+## 1 0.9031968 0.692577
+## 2 8.5000000 0.307423
+```
+
+
+
+---
+
+## Exponential distributions
+
+
+
+```r
+t0 &lt;- 0.95
+t1 &lt;- -1
+t2 &lt;- -1
+var_poisson &lt;- function (x) exp((t0 + t1 * x + t2 * x^2)/2)
+
+poissionDopt &lt;- opt_des("D-Optimality", 
+   y ~ t0 + t1 * x + t2 * x^2, c("t0","t1","t2"), 
+   c(0.95, -1, -1), c(0, 0.5799), weight_fun = var_poisson)
+```
+
+```
+## i Stop condition not reached, max iterations performed
+```
+
+```
+## i The lower bound for efficiency is 99.9984181329142%
+```
+
+```r
+poissionDopt$optdes
+```
+
+```
+##       Point    Weight
+## 1 0.0000000 0.3333438
+## 2 0.2584068 0.3333281
+## 3 0.5799000 0.3333281
+```
+
+
+---
+
+
+## Heuristics
+
+
+
+
+```r
+FP2_00 &lt;- opt_des("I-Optimality",
+  y ~ a0 + a1*log(x) + a2*log(x)^2,
+  c("a0", "a1", "a2"),
+  c(1, 1, 1),
+  c(0.0001, 1),
+  reg_int = c(0.0001, 1))
+```
+
+```
+## i Stop condition not reached, max iterations performed
+```
+
+```
+## i The lower bound for efficiency is -38.3569552796609%
+```
+
+```r
+FP2_00$optdes
+```
+
+```
+##          Point     Weight
+## 1 0.0003870359 0.04415159
+## 2 0.1667500000 0.49513229
+## 3 1.0000000000 0.46071612
+```
+
+
+---
+
+
+## Heuristics
+
+
+
+```r
+FP2_00 &lt;- opt_des("I-Optimality",
+  y ~ a0 + a1*log(x) + a2*log(x)^2,
+  c("a0", "a1", "a2"),
+  c(1, 1, 1),
+  c(0.0001, 1),
+  reg_int = c(0.0001, 1),
+  join_thresh = 0.005)
+```
+
+```
+## i Stop condition reached: difference between sensitivity and criterion &lt; 1e-05
+```
+
+```
+## i The lower bound for efficiency is 99.9998747336867%
+```
+
+```r
+FP2_00$optdes
+```
+
+```
+##        Point     Weight
+## 1 0.00010000 0.03663611
+## 2 0.03350507 0.37678982
+## 3 1.00000000 0.58657406
+```
+
+
+---
+
+class: chapter-slide
+
+# Evaluating designs: `optdes`class
+
+
+---
+
+
+## Design efficiency
+
+
+```r
+design &lt;- data.frame("Point" = c(220, 240, 400),
+  "Weight" = c(1/3, 1/3, 1/3))
+
+design_efficiency(resArr.D, design)
+```
+
+```
+## i The efficiency of the design is 30.6376288682445%
+```
+
+```
+## [1] 0.3063763
+```
+
+
+---
+
+## Design efficiency: criterion function
+
+
+```r
+Idesign &lt;- data.frame("Point" = c(0.1, 0.3, 0.9, 1),
+  "Weight" = c(1/5, 0.3, 0.3, 1/5))
+
+design_efficiency(FP2_00, Idesign)
+```
+
+```
+## i The efficiency of the design is 6.44943827498165%
+```
+
+```
+## [1] 0.06449438
+```
+
+
+---
+
+## `optdes` class
+
+
+```r
+print(resArr.D)
+```
+
+```
+##      Point    Weight
+## 1 329.2966 0.5000068
+## 2 422.0000 0.4999932
+```
+
+```r
+summary(resArr.D)
+```
+
+```
+## Model: 
+## y ~ a * exp(-b/x)
+## and weight function: 
+## NULL
+## Optimal design for  D-Optimality :
+##      Point    Weight
+## 1 329.2966 0.5000068
+## 2 422.0000 0.4999932
+## 
+##  Minimum efficiency (Atwood):  99.9986396401789%
+##  Criterion value:  9972806
+```
+
+
+---
+
+## `optdes` class
+
+
+
+```r
+plot(resArr.D)
+```
+
+&lt;img src="optedrPackage_files/figure-html/unnamed-chunk-13-1.png" title="Optimal design plot" alt="Optimal design plot" width="48%" style="display: block; margin: auto;" /&gt;
+
+
+
+---
+
+class: chapter-slide
+
+# D-augmentation
+
+---
+
+## Design augmentation
+
+
+
+
+
+
+```r
+aug_arr &lt;- augment_design(resArr.D$optdes, 0.3, 
+               y ~ a * exp(-b/x),
+               parameters = c("a", "b"),
+               par_values = c(1, 1500),
+               design_space = c(212, 422),
+               F)
+```
+
+Efficiency of `\(80\%\)`
+
+&lt;img src="img/augment.png" title="Candidate points region" alt="Candidate points region" width="48%" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+Adding points 260 and 380 with weight 0.15
+
+
+```r
+aug_arr
+```
+
+```
+##      Point    Weight
+## 1 329.2966 0.3500048
+## 2 422.0000 0.3499952
+## 3 260.0000 0.1500000
+## 4 380.0000 0.1500000
+```
+
+---
+
+## Augmenting a non-optimal design
+
+
+
+
+
+```r
+design_augMM &lt;- data.frame("Point" = c(3, 5, 7), 
+                           "Weight" = c(1/3, 1/3, 1/3))
+```
+
+Efficiency of the initial design `\(48.69\%\)`
+
+
+
+```r
+aug_MM &lt;- augment_design(design_augMM,
+             0.4,
+             y ~ V*x/(K+x),
+             c("V", "K"),
+             c(1, 1.70),
+             c(0.34, 8.5),
+             T)
+```
+
+---
+
+Candidate points region `\([0.46, 2.04]\)` (chosen `\(1.3\)`), points added `\(0.5\)` and `\(1.7\)` with weight `\(1\)`
+
+
+```r
+aug_MM
+```
+
+```
+##   Point Weight
+## 1   3.0    0.2
+## 2   5.0    0.2
+## 3   7.0    0.2
+## 4   0.5    0.2
+## 5   1.7    0.2
+```
+
+
+with efficiency `\(67.71\%\)`
+
+---
+
+class: chapter-slide
+
+# Efficient rounding
+
+
+---
+
+## Rounding algorithm
+
+1. Start with an approximate design with `\(k\)` points and weights `\(\xi(x_i)\)`
+2. Calculate factor `\(\nu = n - k/2\)`
+3. Asign `\(z_i \gets \nu\xi(x_i)\)`
+4. Round `\(z_i\)` to the closest greater integer `\(r_i = \lceil {z} \rceil\)`
+5. If `\(\sum_i r_i = n\)` then return `\(r = \{r_1, \dots, r_n\}\)` else 
+increase `\(r_i\)` with `\(i = argmax_i (n \xi(x_i) - r_i)\)` 
+or decrease `\(r_i\)` with `\(i = argmin_i (n \xi(x_i) - r_i)\)`
+until `\(\sum_i r_i = n\)`
+
+
+---
+
+## Rounding 
+
+
+```r
+design_test &lt;- data.frame("Point" = seq(1, 5, length.out = 7), 
+  "Weight" = c(0.1, 0.0001, 0.2, 0.134, 0.073, 0.2111, 0.2818))
+
+efficient_round(design_test, 21)
+```
+
+```
+##      Point Weight
+## 1 1.000000      2
+## 2 1.666667      1
+## 3 2.333333      4
+## 4 3.000000      3
+## 5 3.666667      2
+## 6 4.333333      4
+## 7 5.000000      5
+```
+
+---
+
+## Rounding if `\(\sum_i r_i \neq n\)`
+
+
+```r
+efficient_round(design_test, 20)
+```
+
+```
+## i The proposed size of rounding is greater than n: 
+## 2 1 4 3 2 4 5
+```
+
+```
+## i An alternative with size n is returned
+```
+
+```
+##      Point Weight
+## 1 1.000000      2
+## 2 1.666667      1
+## 3 2.333333      4
+## 4 3.000000      3
+## 5 3.666667      1
+## 6 4.333333      4
+## 7 5.000000      5
+```
+
+---
+
+## Check efficiency
+
+
+```r
+exact_design &lt;- efficient_round(resArr.D$optdes, 7)
+aprox_design &lt;- exact_design
+aprox_design$Weight &lt;- 
+  aprox_design$Weight / sum(aprox_design$Weight)
+
+design_efficiency(resArr.D, aprox_design)
+```
+
+```
+## i The efficiency of the design is 98.9743318702366%
+```
+
+```
+## [1] 0.9897433
+```
+
+
+
+
+---
+
+class: chapter-slide
+
+# `Shiny` demos
+
+
+---
+
+
+## Shiny Antoine
+
+
+
+```r
+shiny_optimal()
+```
+
+
+&lt;img src="img/antoineopt.PNG" title="Optimal designs for Antoine's Equation Shiny" alt="Optimal designs for Antoine's Equation Shiny" width="90%" height="90%" style="display: block; margin: auto;" /&gt;
+
+
+
+
+---
+
+## Shiny Addpoints
+
+
+
+```r
+shiny_augment()
+```
+
+
+&lt;img src="img/addregion.PNG" title="Augment design shiny" alt="Augment design shiny" width="90%" height="90%" style="display: block; margin: auto;" /&gt;
+
+
+---
+
+class: chapter-slide
+
+# Summary and future improvements
+
+
+---
+
+## Summary
+
+- Friendly use
+- Design augmentation for different models
+- Efficient rounding to directly implement designs 
+
+## Future improvements
+
+- Models with several explanatory variables
+- Design augmentation for different criteria
+
+
+---
+
+## Detailed information and slides
+
+- https://github.com/Kezrael/optedr
+- https://cran.r-project.org/web/packages/optedr/index.html
+
+
+---
+
+## Thanks for your attention!
+
+&lt;img src="img/goodbye.gif" width="95%" height="95%" style="display: block; margin: auto;" /&gt;
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create();
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+// add `data-at-shortcutkeys` attribute to <body> to resolve conflicts with JAWS
+// screen reader (see PR #262)
+(function(d) {
+  let res = {};
+  d.querySelectorAll('.remark-help-content table tr').forEach(tr => {
+    const t = tr.querySelector('td:nth-child(2)').innerText;
+    tr.querySelectorAll('td:first-child .key').forEach(key => {
+      const k = key.innerText;
+      if (/^[a-z]$/.test(k)) res[k] = t;  // must be a single letter (key)
+    });
+  });
+  d.body.setAttribute('data-at-shortcutkeys', JSON.stringify(res));
+})(document);
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
